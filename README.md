@@ -29,6 +29,7 @@ npx wrangler r2 bucket create webdav-preview
 通过环境变量生成 `wrangler.toml`：
 
 ```bash
+export WORKER_NAME=webdav
 export R2_BUCKET_NAME=webdav
 export R2_PREVIEW_BUCKET_NAME=webdav-preview
 export WEBDAV_USERNAME=admin

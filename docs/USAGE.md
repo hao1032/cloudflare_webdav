@@ -68,6 +68,7 @@ npm run deploy
 
 | 变量 | 是否必填 | 示例 | 说明 |
 | --- | --- | --- | --- |
+| `WORKER_NAME` | 可选 | `webdav` | Worker 项目名称；建议和 Cloudflare 网页里的 Project name 一致 |
 | `R2_BUCKET_NAME` | 必填 | `webdav` | 正式环境使用的 R2 Bucket |
 | `R2_PREVIEW_BUCKET_NAME` | 可选 | `webdav-preview` | 预览环境使用的 R2 Bucket |
 | `WEBDAV_USERNAME` | 可选 | `admin` | WebDAV 登录用户名 |

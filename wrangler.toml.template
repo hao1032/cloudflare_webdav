@@ -1,4 +1,4 @@
-name = "cloudflare-r2-webdav"
+name = "{{WORKER_NAME}}"
 main = "src/main.py"
 compatibility_date = "2026-06-11"
 compatibility_flags = ["python_workers"]
