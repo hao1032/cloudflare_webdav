@@ -465,13 +465,12 @@ class Default(WorkerEntrypoint):
         return dav_response(multistatus(responses))
 
     async def get(self, bucket, path, head_only=False):
-        if await collection_exists(bucket, path):
-            if head_only:
-                return html_response("", extra_headers={"content-length": "0"})
-            return await self.directory_listing(bucket, path)
-
         obj = await bucket.get(object_key(path))
         if not r2_exists(obj):
+            if await collection_exists(bucket, path):
+                if head_only:
+                    return html_response("", extra_headers={"content-length": "0"})
+                return await self.directory_listing(bucket, path)
             return text_response("Not found", status=404)
 
         headers = {
