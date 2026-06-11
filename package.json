@@ -1,0 +1,17 @@
+{
+  "name": "cloudflare-r2-webdav",
+  "private": true,
+  "scripts": {
+    "build": "python3 scripts/render_wrangler_config.py",
+    "render:wrangler": "python3 scripts/render_wrangler_config.py",
+    "predev": "python3 scripts/render_wrangler_config.py",
+    "dev": "wrangler dev",
+    "predeploy": "python3 scripts/render_wrangler_config.py",
+    "deploy": "wrangler deploy",
+    "test": "python3 -m unittest discover -s tests",
+    "check": "python3 -m py_compile src/main.py"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
