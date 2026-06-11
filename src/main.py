@@ -378,9 +378,10 @@ async def list_children(bucket, prefix):
     return sorted(directories.items()), sorted(files, key=lambda item: item.key)
 
 
-async def fetch_source_body(request):
+async def fetch_source_payload(request):
     try:
         from js import fetch
+        from js import Uint8Array
         from pyodide.ffi import to_js
     except ImportError:
         return None
@@ -392,7 +393,7 @@ async def fetch_source_body(request):
     fetched = await fetch(request.url, to_js({"headers": headers}))
     if not getattr(fetched, "ok", False):
         return None
-    return getattr(fetched, "body", None)
+    return Uint8Array.new(await fetched.arrayBuffer())
 
 
 class Default(WorkerEntrypoint):
@@ -606,10 +607,10 @@ class Default(WorkerEntrypoint):
             if move:
                 await delete_prefix(bucket, source_prefix)
         else:
-            body = await fetch_source_body(request)
-            if body is None:
+            payload = await fetch_source_payload(request)
+            if payload is None:
                 return text_response("Not found", status=404)
-            await bucket.put(destination_key, body)
+            await bucket.put(destination_key, payload)
             if move:
                 await bucket.delete(source_key)
 
