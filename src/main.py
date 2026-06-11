@@ -332,9 +332,7 @@ class Default(WorkerEntrypoint):
         try:
             return await self.handle(request)
         except Exception:
-            if getattr(self.env, "DEBUG_ERRORS", "") == "1":
-                return text_response(format_exc(), status=500)
-            return text_response("Internal server error", status=500)
+            return text_response(format_exc(), status=500)
 
     async def handle(self, request):
         bucket = self.env.WEBDAV_BUCKET
