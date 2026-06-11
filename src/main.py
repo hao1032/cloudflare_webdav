@@ -380,8 +380,8 @@ async def list_children(bucket, prefix):
 
 async def fetch_source_payload(request):
     try:
+        from js import Blob
         from js import fetch
-        from js import Uint8Array
         from pyodide.ffi import to_js
     except ImportError:
         return None
@@ -393,7 +393,7 @@ async def fetch_source_payload(request):
     fetched = await fetch(request.url, to_js({"headers": headers}))
     if not getattr(fetched, "ok", False):
         return None
-    return Uint8Array.new(await fetched.arrayBuffer())
+    return Blob.new(to_js([await fetched.arrayBuffer()]))
 
 
 class Default(WorkerEntrypoint):
