@@ -9,6 +9,7 @@
     "predeploy": "python3 scripts/render_wrangler_config.py",
     "deploy": "wrangler deploy",
     "test": "python3 -m unittest discover -s tests",
+    "test:live": "python3 -m unittest tests.test_webdav_live",
     "check": "python3 -m py_compile src/main.py"
   },
   "devDependencies": {

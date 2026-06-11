@@ -71,7 +71,7 @@ def etag_from_object(obj):
 
 
 def r2_exists(obj):
-    return obj is not None
+    return obj is not None and getattr(obj, "key", None) is not None
 
 
 async def r2_copy_payload(obj):

@@ -73,6 +73,21 @@ npm run check
 npm test
 ```
 
+线上 WebDAV 集成测试：
+
+```bash
+export WEBDAV_TEST_URL=https://your-worker.example.com/
+export WEBDAV_USERNAME=admin
+export WEBDAV_PASSWORD=change-me
+npm run test:live
+```
+
+如果本机 Python 缺少 CA 证书导致测试报证书错误，可以临时加：
+
+```bash
+export WEBDAV_TEST_INSECURE=1
+```
+
 ## 说明
 
 R2 是对象存储，不是原生文件系统，所以 `MOVE` 和 `COPY` 对目录会逐个对象复制。大目录操作可能比较慢，也可能受到 Worker 执行时间限制。这个项目适合作为个人 WebDAV、备份入口或小规模文件同步服务的基础版本。

@@ -184,3 +184,18 @@ https://cloudflare-r2-webdav.your-account.workers.dev
 - 公开部署时建议设置 `WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD`。
 - 如果客户端提示认证失败，先检查 Worker 环境变量里的用户名和密码。
 - 如果客户端提示找不到存储，检查 R2 bucket 名称和 `WEBDAV_BUCKET` binding。
+
+## 11. 验证部署
+
+如果你有项目代码，也可以对线上地址运行集成测试：
+
+```bash
+export WEBDAV_TEST_URL=https://wd.tangome.dpdns.org/
+export WEBDAV_USERNAME=tango
+export WEBDAV_PASSWORD=123
+npm run test:live
+```
+
+如果本机 Python 缺少 CA 证书导致测试报证书错误，可以临时设置 `WEBDAV_TEST_INSECURE=1`。
+
+测试会创建一个临时目录，执行上传、下载、复制、移动、删除等操作，最后清理测试目录。
