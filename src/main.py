@@ -332,7 +332,7 @@ async def copy_prefix(bucket, source_prefix, destination_prefix):
             target_key = destination_prefix + source_key[len(source_prefix) :]
             obj = await bucket.get(source_key)
             if r2_exists(obj):
-                await bucket.put(target_key, obj.body)
+                await bucket.put(target_key, await obj.arrayBuffer())
         cursor = getattr(listing, "cursor", None)
         if not getattr(listing, "truncated", False):
             break
@@ -582,7 +582,7 @@ class Default(WorkerEntrypoint):
             obj = await bucket.get(source_key)
             if not r2_exists(obj):
                 return text_response("Not found", status=404)
-            await bucket.put(destination_key, obj.body)
+            await bucket.put(destination_key, await obj.arrayBuffer())
             if move:
                 await bucket.delete(source_key)
 
