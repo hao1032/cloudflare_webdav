@@ -1,5 +1,6 @@
 from base64 import b64decode
 from email.utils import formatdate
+from html import escape
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
@@ -87,6 +88,70 @@ def dav_response(xml_body, status=207):
         xml_body,
         status=status,
         headers={"content-type": 'application/xml; charset="utf-8"'},
+    )
+
+
+def html_response(html_body, status=200, extra_headers=None):
+    headers = {"content-type": "text/html; charset=utf-8"}
+    if extra_headers:
+        headers.update(extra_headers)
+    return response(html_body, status=status, headers=headers)
+
+
+def format_size(size):
+    value = float(size or 0)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024 or unit == "GiB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GiB"
+
+
+def html_page(title, rows):
+    body_rows = "\n".join(rows) or '<tr><td colspan="3" class="empty">Empty directory</td></tr>'
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(title)}</title>
+  <style>
+    :root {{ color-scheme: light dark; }}
+    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.45; }}
+    main {{ max-width: 960px; margin: 0 auto; }}
+    h1 {{ font-size: 1.5rem; margin: 0 0 1rem; word-break: break-word; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th, td {{ border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); padding: .65rem .5rem; text-align: left; }}
+    th.size, td.size {{ text-align: right; white-space: nowrap; }}
+    td.modified {{ white-space: nowrap; opacity: .75; }}
+    a {{ color: inherit; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .empty {{ opacity: .7; text-align: center; }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{escape(title)}</h1>
+    <table>
+      <thead><tr><th>Name</th><th class="size">Size</th><th>Modified</th></tr></thead>
+      <tbody>
+        {body_rows}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>"""
+
+
+def directory_row(name, href, size="", modified="", is_dir=False):
+    label = f"{name}/" if is_dir else name
+    icon = "[DIR] " if is_dir else ""
+    return (
+        "<tr>"
+        f'<td><a href="{escape(href, quote=True)}">{escape(icon + label)}</a></td>'
+        f'<td class="size">{escape(size)}</td>'
+        f'<td class="modified">{escape(modified)}</td>'
+        "</tr>"
     )
 
 
@@ -180,6 +245,16 @@ async def is_collection(bucket, path):
     if normalize_path(path) == "/":
         return True
     return bool(await bucket.head(dir_marker_key(path)))
+
+
+async def collection_exists(bucket, path):
+    if await is_collection(bucket, path):
+        return True
+    key = object_key(path)
+    if not key:
+        return True
+    listing = await bucket.list(prefix=key.rstrip("/") + "/", limit=1)
+    return bool(getattr(listing, "objects", []))
 
 
 async def delete_prefix(bucket, prefix):
@@ -309,8 +384,10 @@ class Default(WorkerEntrypoint):
         return dav_response(multistatus(responses))
 
     async def get(self, bucket, path, head_only=False):
-        if await is_collection(bucket, path):
-            return text_response("Cannot GET a collection", status=409)
+        if await collection_exists(bucket, path):
+            if head_only:
+                return html_response("", extra_headers={"content-length": "0"})
+            return await self.directory_listing(bucket, path)
 
         obj = await bucket.get(object_key(path))
         if not obj:
@@ -327,6 +404,40 @@ class Default(WorkerEntrypoint):
             headers["content-length"] = str(getattr(obj, "size", 0))
             return response("", status=200, headers=headers)
         return Response(obj.body, status=200, headers=headers)
+
+    async def directory_listing(self, bucket, path):
+        key = object_key(path)
+        prefix = "" if path == "/" else key.rstrip("/") + "/"
+        listing = await bucket.list(prefix=prefix, delimiter="/")
+        rows = []
+
+        if path != "/":
+            rows.append(directory_row("..", href_for(parent_path(path) + "/"), is_dir=True))
+
+        for common_prefix in getattr(listing, "delimitedPrefixes", []):
+            name = common_prefix[len(prefix) :].rstrip("/")
+            if not name:
+                continue
+            child_path = "/" + common_prefix.rstrip("/") + "/"
+            rows.append(directory_row(name, href_for(child_path), is_dir=True))
+
+        for item in getattr(listing, "objects", []):
+            if is_hidden_marker(item.key):
+                continue
+            name = item.key[len(prefix) :]
+            if not name or "/" in name:
+                continue
+            rows.append(
+                directory_row(
+                    name,
+                    href_for("/" + item.key),
+                    size=format_size(getattr(item, "size", 0)),
+                    modified=http_date(getattr(item, "uploaded", None)),
+                )
+            )
+
+        title = f"Index of {path if path.endswith('/') else path + '/'}"
+        return html_response(html_page(title, rows))
 
     async def put(self, bucket, request, path):
         if path == "/" or path.endswith("/"):

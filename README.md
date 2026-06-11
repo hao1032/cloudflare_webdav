@@ -8,6 +8,7 @@
 - 支持 `OPTIONS`、`PROPFIND`、`GET`、`HEAD`、`PUT`、`DELETE`、`MKCOL`、`MOVE`、`COPY`。
 - 可选 Basic Auth，通过 `WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD` 配置。
 - 目录使用 `path/.dir` 作为占位对象，因此空目录也能保留。
+- 浏览器打开目录时显示文件列表。
 
 部署和使用说明见 [docs/USAGE.md](docs/USAGE.md)。
 

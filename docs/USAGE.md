@@ -111,6 +111,8 @@ https://cloudflare-r2-webdav.your-account.workers.dev
 
 如果你绑定了自己的域名，也可以使用自定义域名作为 WebDAV 地址。
 
+在浏览器中打开这个地址时，会显示当前目录的文件列表。
+
 ## 7. 连接 WebDAV 客户端
 
 连接信息：
