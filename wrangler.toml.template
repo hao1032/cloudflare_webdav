@@ -12,3 +12,4 @@ preview_bucket_name = "{{R2_PREVIEW_BUCKET_NAME}}"
 # Leave both empty to disable Basic Auth.
 WEBDAV_USERNAME = "{{WEBDAV_USERNAME}}"
 WEBDAV_PASSWORD = "{{WEBDAV_PASSWORD}}"
+DEBUG_ERRORS = "{{DEBUG_ERRORS}}"

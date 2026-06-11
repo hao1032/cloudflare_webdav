@@ -73,6 +73,7 @@ npm run deploy
 | `R2_PREVIEW_BUCKET_NAME` | 可选 | `webdav-preview` | 预览环境使用的 R2 Bucket |
 | `WEBDAV_USERNAME` | 可选 | `admin` | WebDAV 登录用户名 |
 | `WEBDAV_PASSWORD` | 可选 | `change-me` | WebDAV 登录密码 |
+| `DEBUG_ERRORS` | 可选 | `1` | 临时诊断运行时报错；排查完成后请清空 |
 
 如果没有创建预览 bucket，可以不设置 `R2_PREVIEW_BUCKET_NAME`。
 

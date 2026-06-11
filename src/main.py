@@ -1,6 +1,7 @@
 from base64 import b64decode
 from email.utils import formatdate
 from html import escape
+from traceback import format_exc
 from urllib.parse import quote, unquote, urlsplit
 
 from workers import Response, WorkerEntrypoint
@@ -328,6 +329,14 @@ async def list_children(bucket, prefix):
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
+        try:
+            return await self.handle(request)
+        except Exception:
+            if getattr(self.env, "DEBUG_ERRORS", "") == "1":
+                return text_response(format_exc(), status=500)
+            return text_response("Internal server error", status=500)
+
+    async def handle(self, request):
         bucket = self.env.WEBDAV_BUCKET
         method = request.method.upper()
         path = normalize_path(urlsplit(request.url).path)
