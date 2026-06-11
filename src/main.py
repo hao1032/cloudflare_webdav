@@ -192,6 +192,36 @@ def multistatus(responses):
     )
 
 
+def lock_token_for(path):
+    return f"opaquelocktoken:{quote(object_key(path) or 'root', safe='')}"
+
+
+def lock_response(path):
+    token = lock_token_for(path)
+    body = f"""<?xml version="1.0" encoding="utf-8"?>
+<D:prop xmlns:D="DAV:">
+  <D:lockdiscovery>
+    <D:activelock>
+      <D:locktype><D:write /></D:locktype>
+      <D:lockscope><D:exclusive /></D:lockscope>
+      <D:depth>infinity</D:depth>
+      <D:owner />
+      <D:timeout>Second-3600</D:timeout>
+      <D:locktoken><D:href>{xml_escape(token)}</D:href></D:locktoken>
+      <D:lockroot><D:href>{xml_escape(href_for(path))}</D:href></D:lockroot>
+    </D:activelock>
+  </D:lockdiscovery>
+</D:prop>"""
+    return response(
+        body,
+        status=200,
+        headers={
+            "content-type": 'application/xml; charset="utf-8"',
+            "lock-token": f"<{token}>",
+        },
+    )
+
+
 def requested_depth(request):
     depth = request.headers.get("depth")
     return "0" if depth == "0" else "1"
@@ -365,8 +395,10 @@ class Default(WorkerEntrypoint):
             return await self.move_or_copy(bucket, request, path, move=True)
         if method == "COPY":
             return await self.move_or_copy(bucket, request, path, move=False)
-        if method in ("LOCK", "UNLOCK"):
-            return response("", status=200)
+        if method == "LOCK":
+            return lock_response(path)
+        if method == "UNLOCK":
+            return response("", status=204)
 
         return text_response("Method not allowed", status=405)
 
@@ -482,7 +514,7 @@ class Default(WorkerEntrypoint):
             return text_response("Use MKCOL to create collections", status=409)
 
         parent = parent_path(path)
-        if parent != "/" and not await is_collection(bucket, parent):
+        if parent != "/" and not await collection_exists(bucket, parent):
             return text_response("Parent collection does not exist", status=409)
 
         existed = bool(await bucket.head(object_key(path)))
