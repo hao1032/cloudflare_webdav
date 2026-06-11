@@ -290,6 +290,36 @@ async def copy_prefix(bucket, source_prefix, destination_prefix):
             break
 
 
+async def list_children(bucket, prefix):
+    directories = {}
+    files = []
+    cursor = None
+
+    while True:
+        options = {"prefix": prefix, "limit": 1000}
+        if cursor:
+            options["cursor"] = cursor
+        listing = await bucket.list(**options)
+
+        for item in getattr(listing, "objects", []):
+            if is_hidden_marker(item.key):
+                continue
+            name = item.key[len(prefix) :]
+            if not name:
+                continue
+            first, separator, _rest = name.partition("/")
+            if separator:
+                directories.setdefault(first, prefix + first + "/")
+            else:
+                files.append(item)
+
+        cursor = getattr(listing, "cursor", None)
+        if not getattr(listing, "truncated", False):
+            break
+
+    return sorted(directories.items()), sorted(files, key=lambda item: item.key)
+
+
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         if not authorized(request, self.env):
@@ -358,18 +388,13 @@ class Default(WorkerEntrypoint):
 
         if collection and depth != "0":
             prefix = "" if path == "/" else key.rstrip("/") + "/"
-            listing = await bucket.list(prefix=prefix, delimiter="/")
+            directories, files = await list_children(bucket, prefix)
 
-            for common_prefix in getattr(listing, "delimitedPrefixes", []):
+            for _name, common_prefix in directories:
                 child_path = "/" + common_prefix.rstrip("/")
                 responses.append(build_prop_response(href_for(child_path + "/"), True))
 
-            for item in getattr(listing, "objects", []):
-                if is_hidden_marker(item.key):
-                    continue
-                name = item.key[len(prefix) :]
-                if not name or "/" in name:
-                    continue
+            for item in files:
                 child_path = "/" + item.key
                 responses.append(
                     build_prop_response(
@@ -408,25 +433,18 @@ class Default(WorkerEntrypoint):
     async def directory_listing(self, bucket, path):
         key = object_key(path)
         prefix = "" if path == "/" else key.rstrip("/") + "/"
-        listing = await bucket.list(prefix=prefix, delimiter="/")
+        directories, files = await list_children(bucket, prefix)
         rows = []
 
         if path != "/":
             rows.append(directory_row("..", href_for(parent_path(path) + "/"), is_dir=True))
 
-        for common_prefix in getattr(listing, "delimitedPrefixes", []):
-            name = common_prefix[len(prefix) :].rstrip("/")
-            if not name:
-                continue
+        for name, common_prefix in directories:
             child_path = "/" + common_prefix.rstrip("/") + "/"
             rows.append(directory_row(name, href_for(child_path), is_dir=True))
 
-        for item in getattr(listing, "objects", []):
-            if is_hidden_marker(item.key):
-                continue
+        for item in files:
             name = item.key[len(prefix) :]
-            if not name or "/" in name:
-                continue
             rows.append(
                 directory_row(
                     name,
