@@ -547,7 +547,7 @@ class Default(WorkerEntrypoint):
         parent = parent_path(path)
         if parent != "/" and not await is_collection(bucket, parent):
             return text_response("Parent collection does not exist", status=409)
-        await bucket.put(dir_marker_key(path), b"")
+        await bucket.put(dir_marker_key(path), "")
         return response("", status=201)
 
     async def move_or_copy(self, bucket, request, path, move):
@@ -571,7 +571,7 @@ class Default(WorkerEntrypoint):
         if await is_collection(bucket, path):
             source_prefix = source_key.rstrip("/") + "/"
             destination_prefix = destination_key.rstrip("/") + "/"
-            await bucket.put(dir_marker_key(destination), b"")
+            await bucket.put(dir_marker_key(destination), "")
             await copy_prefix(bucket, source_prefix, destination_prefix)
             if move:
                 await delete_prefix(bucket, source_prefix)
