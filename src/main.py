@@ -74,6 +74,14 @@ def r2_exists(obj):
     return obj is not None
 
 
+def r2_body_stream(obj):
+    js_object = getattr(obj, "js_object", None)
+    body = getattr(js_object, "body", None)
+    if body is not None:
+        return body
+    return obj.body
+
+
 def response(body="", status=200, headers=None):
     return Response(body, status=status, headers=headers or {})
 
@@ -332,7 +340,7 @@ async def copy_prefix(bucket, source_prefix, destination_prefix):
             target_key = destination_prefix + source_key[len(source_prefix) :]
             obj = await bucket.get(source_key)
             if r2_exists(obj):
-                await bucket.put(target_key, await obj.arrayBuffer())
+                await bucket.put(target_key, r2_body_stream(obj))
         cursor = getattr(listing, "cursor", None)
         if not getattr(listing, "truncated", False):
             break
@@ -582,7 +590,7 @@ class Default(WorkerEntrypoint):
             obj = await bucket.get(source_key)
             if not r2_exists(obj):
                 return text_response("Not found", status=404)
-            await bucket.put(destination_key, await obj.arrayBuffer())
+            await bucket.put(destination_key, r2_body_stream(obj))
             if move:
                 await bucket.delete(source_key)
 
