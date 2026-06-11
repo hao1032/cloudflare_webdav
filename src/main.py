@@ -2,13 +2,11 @@ from base64 import b64decode
 from email.utils import formatdate
 from html import escape
 from urllib.parse import quote, unquote, urlsplit
-from xml.etree import ElementTree
 
 from workers import Response, WorkerEntrypoint
 
 
 DAV_NS = "DAV:"
-ElementTree.register_namespace("D", DAV_NS)
 
 
 def normalize_path(raw_path):
@@ -155,35 +153,43 @@ def directory_row(name, href, size="", modified="", is_dir=False):
     )
 
 
+def xml_escape(value):
+    return escape(str(value or ""), quote=True)
+
+
 def build_prop_response(href, is_dir, size=0, modified=None, etag=None):
-    response_el = ElementTree.Element(f"{{{DAV_NS}}}response")
-    ElementTree.SubElement(response_el, f"{{{DAV_NS}}}href").text = href
-
-    propstat = ElementTree.SubElement(response_el, f"{{{DAV_NS}}}propstat")
-    prop = ElementTree.SubElement(propstat, f"{{{DAV_NS}}}prop")
-    ElementTree.SubElement(prop, f"{{{DAV_NS}}}displayname").text = (
-        "" if href == "/" else unquote(href.rstrip("/").rsplit("/", 1)[-1])
-    )
-    ElementTree.SubElement(prop, f"{{{DAV_NS}}}creationdate").text = http_date(modified)
-    ElementTree.SubElement(prop, f"{{{DAV_NS}}}getlastmodified").text = http_date(modified)
-
-    resource_type = ElementTree.SubElement(prop, f"{{{DAV_NS}}}resourcetype")
+    display_name = "" if href == "/" else unquote(href.rstrip("/").rsplit("/", 1)[-1])
+    resource_type = "<D:resourcetype><D:collection /></D:resourcetype>" if is_dir else "<D:resourcetype />"
+    content_props = ""
     if is_dir:
-        ElementTree.SubElement(resource_type, f"{{{DAV_NS}}}collection")
+        content_props = ""
     else:
-        ElementTree.SubElement(prop, f"{{{DAV_NS}}}getcontentlength").text = str(size)
+        content_props = f"<D:getcontentlength>{int(size or 0)}</D:getcontentlength>"
         if etag:
-            ElementTree.SubElement(prop, f"{{{DAV_NS}}}getetag").text = etag
+            content_props += f"<D:getetag>{xml_escape(etag)}</D:getetag>"
 
-    ElementTree.SubElement(propstat, f"{{{DAV_NS}}}status").text = "HTTP/1.1 200 OK"
-    return response_el
+    return f"""<D:response>
+  <D:href>{xml_escape(href)}</D:href>
+  <D:propstat>
+    <D:prop>
+      <D:displayname>{xml_escape(display_name)}</D:displayname>
+      <D:creationdate>{xml_escape(http_date(modified))}</D:creationdate>
+      <D:getlastmodified>{xml_escape(http_date(modified))}</D:getlastmodified>
+      {resource_type}
+      {content_props}
+    </D:prop>
+    <D:status>HTTP/1.1 200 OK</D:status>
+  </D:propstat>
+</D:response>"""
 
 
 def multistatus(responses):
-    root = ElementTree.Element(f"{{{DAV_NS}}}multistatus")
-    for item in responses:
-        root.append(item)
-    return ElementTree.tostring(root, encoding="utf-8", xml_declaration=True).decode()
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        f'<D:multistatus xmlns:D="{DAV_NS}">'
+        + "".join(responses)
+        + "</D:multistatus>"
+    )
 
 
 def requested_depth(request):
@@ -322,15 +328,15 @@ async def list_children(bucket, prefix):
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        if not authorized(request, self.env):
-            return unauthorized()
-
         bucket = self.env.WEBDAV_BUCKET
         method = request.method.upper()
         path = normalize_path(urlsplit(request.url).path)
 
         if method == "OPTIONS":
             return self.options()
+
+        if not authorized(request, self.env):
+            return unauthorized()
         if method == "PROPFIND":
             return await self.propfind(bucket, request, path)
         if method in ("GET", "HEAD"):
