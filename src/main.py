@@ -70,6 +70,10 @@ def etag_from_object(obj):
     return http_etag or (f'"{etag}"' if etag else None)
 
 
+def r2_exists(obj):
+    return obj is not None
+
+
 def response(body="", status=200, headers=None):
     return Response(body, status=status, headers=headers or {})
 
@@ -277,9 +281,9 @@ async def object_exists(bucket, path):
     key = object_key(path)
     if not key:
         return True
-    if await bucket.head(key):
+    if r2_exists(await bucket.head(key)):
         return True
-    if await bucket.head(dir_marker_key(path)):
+    if r2_exists(await bucket.head(dir_marker_key(path))):
         return True
     listing = await bucket.list(prefix=key.rstrip("/") + "/", limit=1)
     return bool(getattr(listing, "objects", []))
@@ -288,7 +292,7 @@ async def object_exists(bucket, path):
 async def is_collection(bucket, path):
     if normalize_path(path) == "/":
         return True
-    return bool(await bucket.head(dir_marker_key(path)))
+    return r2_exists(await bucket.head(dir_marker_key(path)))
 
 
 async def collection_exists(bucket, path):
@@ -327,7 +331,7 @@ async def copy_prefix(bucket, source_prefix, destination_prefix):
             source_key = item.key
             target_key = destination_prefix + source_key[len(source_prefix) :]
             obj = await bucket.get(source_key)
-            if obj:
+            if r2_exists(obj):
                 await bucket.put(target_key, obj.body)
         cursor = getattr(listing, "cursor", None)
         if not getattr(listing, "truncated", False):
@@ -421,20 +425,20 @@ class Default(WorkerEntrypoint):
 
         if not key:
             collection = True
-        elif not obj and not collection:
+        elif not r2_exists(obj) and not collection:
             listing = await bucket.list(prefix=key.rstrip("/") + "/", limit=1)
             collection = bool(getattr(listing, "objects", []))
 
-        if not obj and not collection:
+        if not r2_exists(obj) and not collection:
             return text_response("Not found", status=404)
 
         responses = [
             build_prop_response(
                 href_for(path + ("/" if collection and not path.endswith("/") else "")),
                 collection,
-                size=getattr(obj, "size", 0) if obj else 0,
-                modified=getattr(obj, "uploaded", None) if obj else None,
-                etag=etag_from_object(obj) if obj else None,
+                size=getattr(obj, "size", 0) if r2_exists(obj) else 0,
+                modified=getattr(obj, "uploaded", None) if r2_exists(obj) else None,
+                etag=etag_from_object(obj) if r2_exists(obj) else None,
             )
         ]
 
@@ -467,7 +471,7 @@ class Default(WorkerEntrypoint):
             return await self.directory_listing(bucket, path)
 
         obj = await bucket.get(object_key(path))
-        if not obj:
+        if not r2_exists(obj):
             return text_response("Not found", status=404)
 
         headers = {
@@ -517,7 +521,7 @@ class Default(WorkerEntrypoint):
         if parent != "/" and not await collection_exists(bucket, parent):
             return text_response("Parent collection does not exist", status=409)
 
-        existed = bool(await bucket.head(object_key(path)))
+        existed = r2_exists(await bucket.head(object_key(path)))
         await bucket.put(
             object_key(path),
             request.body,
@@ -534,7 +538,7 @@ class Default(WorkerEntrypoint):
             await delete_prefix(bucket, key.rstrip("/") + "/")
             return response("", status=204)
 
-        if not await bucket.head(key):
+        if not r2_exists(await bucket.head(key)):
             return text_response("Not found", status=404)
         await bucket.delete(key)
         return response("", status=204)
@@ -577,7 +581,7 @@ class Default(WorkerEntrypoint):
                 await delete_prefix(bucket, source_prefix)
         else:
             obj = await bucket.get(source_key)
-            if not obj:
+            if not r2_exists(obj):
                 return text_response("Not found", status=404)
             await bucket.put(destination_key, obj.body)
             if move:
