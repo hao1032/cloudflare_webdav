@@ -1,7 +1,6 @@
 from base64 import b64decode
 from email.utils import formatdate
 from html import escape
-from traceback import format_exc
 from urllib.parse import quote, unquote, urlsplit
 
 from workers import Response, WorkerEntrypoint
@@ -236,6 +235,14 @@ def destination_path(request):
     return normalize_path(urlsplit(destination).path)
 
 
+def request_method(request):
+    js_object = getattr(request, "js_object", None)
+    method = getattr(js_object, "method", None)
+    if method:
+        return str(method).upper()
+    return request.method.upper()
+
+
 async def object_exists(bucket, path):
     key = object_key(path)
     if not key:
@@ -332,11 +339,11 @@ class Default(WorkerEntrypoint):
         try:
             return await self.handle(request)
         except Exception:
-            return text_response(format_exc(), status=500)
+            return text_response("Internal server error", status=500)
 
     async def handle(self, request):
         bucket = self.env.WEBDAV_BUCKET
-        method = request.method.upper()
+        method = request_method(request)
         path = normalize_path(urlsplit(request.url).path)
 
         if method == "OPTIONS":
