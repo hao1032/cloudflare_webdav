@@ -1,8 +1,16 @@
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote, unquote_to_bytes, urlsplit
+
+
+def decode_path(raw_path):
+    data = unquote_to_bytes(raw_path or "/")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("gb18030", errors="replace")
 
 
 def normalize_path(raw_path):
-    decoded = unquote(raw_path or "/")
+    decoded = decode_path(raw_path)
     parts = []
     for part in decoded.split("/"):
         if not part or part == ".":

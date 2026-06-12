@@ -20,6 +20,12 @@ class PathTests(unittest.TestCase):
     def test_normalize_path_prevents_escape_above_root(self):
         self.assertEqual(paths.normalize_path("/../../secret"), "/secret")
 
+    def test_normalize_path_decodes_utf8_chinese(self):
+        self.assertEqual(paths.normalize_path("/%E4%B8%AD%E6%96%87"), "/中文")
+
+    def test_normalize_path_decodes_gb18030_chinese(self):
+        self.assertEqual(paths.normalize_path("/%D6%D0%CE%C4"), "/中文")
+
     def test_object_and_marker_keys(self):
         self.assertEqual(paths.object_key("/"), "")
         self.assertEqual(paths.object_key("/docs/file.txt"), "docs/file.txt")
@@ -32,6 +38,9 @@ class PathTests(unittest.TestCase):
 
     def test_href_quotes_spaces_but_keeps_slashes(self):
         self.assertEqual(paths.href_for("/a dir/file name.txt"), "/a%20dir/file%20name.txt")
+
+    def test_href_quotes_chinese_as_utf8(self):
+        self.assertEqual(paths.href_for("/中文/文件.txt"), "/%E4%B8%AD%E6%96%87/%E6%96%87%E4%BB%B6.txt")
 
 
 if __name__ == "__main__":
