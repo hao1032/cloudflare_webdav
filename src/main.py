@@ -1,10 +1,11 @@
-from base64 import b64decode
 from traceback import format_exc
+from time import time
 from urllib.parse import urlsplit
 
 from workers import Response, WorkerEntrypoint
 
 try:
+    from .auth import auth_required, clear_auth_failures, credentials_match, is_locked, read_auth_state, record_auth_failure
     from .dav import build_prop_response, etag_from_object, http_date, multistatus
     from .paths import (
         destination_path,
@@ -32,6 +33,7 @@ try:
     )
     from .web import directory_page, directory_row, format_modified, format_size, preview_kind, preview_page
 except ImportError:
+    from auth import auth_required, clear_auth_failures, credentials_match, is_locked, read_auth_state, record_auth_failure
     from dav import build_prop_response, etag_from_object, http_date, multistatus
     from paths import (
         destination_path,
@@ -65,34 +67,19 @@ def requested_depth(request):
     return "0" if depth == "0" else "1"
 
 
-def auth_required(env):
-    return bool(getattr(env, "WEBDAV_USERNAME", None) or getattr(env, "WEBDAV_PASSWORD", None))
-
-
-def authorized(request, env):
-    if not auth_required(env):
-        return True
-
-    expected_user = getattr(env, "WEBDAV_USERNAME", "")
-    expected_password = getattr(env, "WEBDAV_PASSWORD", "")
-    value = request.headers.get("authorization") or ""
-    if not value.lower().startswith("basic "):
-        return False
-
-    try:
-        decoded = b64decode(value.split(" ", 1)[1]).decode("utf-8")
-    except Exception:
-        return False
-
-    username, separator, password = decoded.partition(":")
-    return bool(separator) and username == expected_user and password == expected_password
-
-
 def unauthorized():
     return text_response(
         "Authentication required",
         status=401,
         extra_headers={"www-authenticate": 'Basic realm="Cloudflare R2 WebDAV"'},
+    )
+
+
+def auth_locked_response(state):
+    return text_response(
+        "Too many authentication failures",
+        status=429,
+        extra_headers={"retry-after": str(max(1, int(state.get("blocked_until", 0)) - int(time())))},
     )
 
 
@@ -169,8 +156,9 @@ class Default(WorkerEntrypoint):
         if method == "OPTIONS":
             return self.options()
 
-        if not authorized(request, self.env):
-            return unauthorized()
+        auth_response = await self.authorize(bucket, request)
+        if auth_response:
+            return auth_response
         if method == "PROPFIND":
             return await self.propfind(bucket, request, path)
         if method in ("GET", "HEAD"):
@@ -187,6 +175,21 @@ class Default(WorkerEntrypoint):
             return await self.move_or_copy(bucket, request, path, move=False)
 
         return text_response("Method not allowed", status=405)
+
+    async def authorize(self, bucket, request):
+        if not auth_required(self.env):
+            return None
+        state = await read_auth_state(bucket)
+        now = int(time())
+        if is_locked(state, now):
+            return auth_locked_response(state)
+        if credentials_match(request, self.env):
+            await clear_auth_failures(bucket)
+            return None
+        state = await record_auth_failure(bucket)
+        if is_locked(state, int(time())):
+            return auth_locked_response(state)
+        return unauthorized()
 
     def options(self):
         return response(

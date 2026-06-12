@@ -1,5 +1,7 @@
+import base64
 import asyncio
 import importlib
+import json
 import sys
 import types
 import unittest
@@ -20,6 +22,7 @@ sys.modules["workers"] = workers
 main = importlib.import_module("src.main")
 storage = importlib.import_module("src.r2")
 responses = importlib.import_module("src.responses")
+auth = importlib.import_module("src.auth")
 main.Response = FakeResponse
 responses.Response = FakeResponse
 
@@ -110,6 +113,15 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
         self.bucket = FakeBucket()
         self.worker = main.Default()
         self.worker.env = types.SimpleNamespace(WEBDAV_BUCKET=self.bucket)
+
+    def auth_request(self, username="admin", password="secret"):
+        token = base64.b64encode(f"{username}:{password}".encode()).decode()
+        return FakeRequest("GET", "/", headers={"Authorization": f"Basic {token}"})
+
+    async def auth_state(self):
+        obj = self.bucket.objects.get(auth.AUTH_STATE_KEY)
+        self.assertIsNotNone(obj)
+        return json.loads(obj.body.decode())
 
     async def test_implicit_directory_is_collection(self):
         await self.bucket.put("docs/file.txt", b"hello")
@@ -230,6 +242,48 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(response.body, b"# Title")
+
+    async def test_auth_failures_lock_after_three_attempts(self):
+        self.worker.env.WEBDAV_USERNAME = "admin"
+        self.worker.env.WEBDAV_PASSWORD = "secret"
+
+        self.assertEqual((await self.worker.authorize(self.bucket, self.auth_request(password="bad"))).status, 401)
+        self.assertEqual((await self.worker.authorize(self.bucket, self.auth_request(password="bad"))).status, 401)
+        response = await self.worker.authorize(self.bucket, self.auth_request(password="bad"))
+        state = await self.auth_state()
+
+        self.assertEqual(response.status, 429)
+        self.assertEqual(state["count"], 3)
+        self.assertGreater(state["blocked_until"], 0)
+
+    async def test_auth_lock_blocks_correct_password(self):
+        self.worker.env.WEBDAV_USERNAME = "admin"
+        self.worker.env.WEBDAV_PASSWORD = "secret"
+        await self.bucket.put(
+            auth.AUTH_STATE_KEY,
+            json.dumps({"count": 3, "first_failed_at": 1, "blocked_until": 9999999999}),
+            httpMetadata={"contentType": "application/json"},
+        )
+
+        response = await self.worker.authorize(self.bucket, self.auth_request())
+
+        self.assertEqual(response.status, 429)
+
+    async def test_successful_auth_clears_failure_count(self):
+        self.worker.env.WEBDAV_USERNAME = "admin"
+        self.worker.env.WEBDAV_PASSWORD = "secret"
+        await self.bucket.put(
+            auth.AUTH_STATE_KEY,
+            json.dumps({"count": 2, "first_failed_at": 1, "blocked_until": 0}),
+            httpMetadata={"contentType": "application/json"},
+        )
+
+        response = await self.worker.authorize(self.bucket, self.auth_request())
+        state = await self.auth_state()
+
+        self.assertIsNone(response)
+        self.assertEqual(state["count"], 0)
+        self.assertEqual(state["first_failed_at"], 0)
 
     async def test_debug_errors_returns_traceback(self):
         self.worker.env.DEBUG_ERRORS = "1"
