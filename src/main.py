@@ -27,6 +27,7 @@ try:
     from .responses import (
         dav_response,
         directory_row,
+        format_modified,
         format_size,
         html_page,
         html_response,
@@ -56,6 +57,7 @@ except ImportError:
     from responses import (
         dav_response,
         directory_row,
+        format_modified,
         format_size,
         html_page,
         html_response,
@@ -238,7 +240,7 @@ class Default(WorkerEntrypoint):
                     name,
                     href_for("/" + item.key),
                     size=format_size(getattr(item, "size", 0)),
-                    modified=http_date(getattr(item, "uploaded", None)),
+                    modified=format_modified(getattr(item, "uploaded", None)),
                 )
             )
 
