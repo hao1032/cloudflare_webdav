@@ -45,8 +45,10 @@ def format_modified(timestamp):
     beijing_tz = timezone(timedelta(hours=8))
     if hasattr(timestamp, "timestamp"):
         return datetime.fromtimestamp(timestamp.timestamp(), beijing_tz).strftime("%Y-%m-%d %H:%M CST")
+    if hasattr(timestamp, "getTime"):
+        return datetime.fromtimestamp(timestamp.getTime() / 1000, beijing_tz).strftime("%Y-%m-%d %H:%M")
     if hasattr(timestamp, "strftime"):
-        return timestamp.strftime("%Y-%m-%d %H:%M CST")
+        return timestamp.strftime("%Y-%m-%d %H:%M")
     return str(timestamp)
 
 
@@ -130,35 +132,14 @@ def html_page(title, rows):
     }}
     a:hover {{ text-decoration: underline; }}
     .name {{ overflow-wrap: anywhere; }}
-    .icon {{
+    svg.icon {{
       width: 1rem;
       height: 1rem;
-      border: 1px solid currentColor;
-      border-radius: 3px;
       flex: 0 0 auto;
-      opacity: .72;
+      stroke-width: 1.8;
+      color: var(--muted);
     }}
-    .icon.dir {{
-      border-color: #2563eb;
-      background: color-mix(in srgb, #2563eb 14%, transparent);
-      position: relative;
-    }}
-    .icon.dir::before {{
-      content: "";
-      position: absolute;
-      left: 1px;
-      top: -4px;
-      width: .55rem;
-      height: .25rem;
-      border: 1px solid #2563eb;
-      border-bottom: 0;
-      border-radius: 3px 3px 0 0;
-      background: Canvas;
-    }}
-    .icon.file {{
-      border-color: var(--muted);
-      background: color-mix(in srgb, currentColor 3%, transparent);
-    }}
+    svg.icon.dir {{ color: #2563eb; }}
     .empty {{ color: var(--muted); text-align: center; padding: 28px 14px; }}
     @media (max-width: 680px) {{
       main {{ padding: 22px 12px; }}
@@ -189,10 +170,17 @@ def html_page(title, rows):
 
 def directory_row(name, href, size="", modified="", is_dir=False):
     label = f"{name}/" if is_dir else name
-    icon = "dir" if is_dir else "file"
+    icon = (
+        '<svg class="icon dir" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor">'
+        '<path d="M3 7.5h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />'
+        '<path d="M3 7.5V5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2.5" />'
+        "</svg>"
+        if is_dir
+        else '<svg class="icon file" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"><path d="M6 2.5h8l4 4v15H6z" /><path d="M14 2.5v4h4" /></svg>'
+    )
     return (
         "<tr>"
-        f'<td><a href="{escape(href, quote=True)}"><span class="icon {icon}" aria-label="{icon}"></span>'
+        f'<td><a href="{escape(href, quote=True)}">{icon}'
         f'<span class="name">{escape(label)}</span></a></td>'
         f'<td class="size">{escape(size)}</td>'
         f'<td class="modified">{escape(modified)}</td>'
