@@ -118,19 +118,37 @@ def object_content_type(obj):
     return getattr(metadata, "contentType", "") if metadata else ""
 
 
+def decode_buffer(data):
+    if isinstance(data, str):
+        return data
+    if isinstance(data, bytes):
+        return data.decode("utf-8", errors="replace")
+    if isinstance(data, bytearray):
+        return bytes(data).decode("utf-8", errors="replace")
+    to_py = getattr(data, "to_py", None)
+    if callable(to_py):
+        return bytes(to_py()).decode("utf-8", errors="replace")
+    try:
+        from js import Uint8Array
+
+        view = Uint8Array.new(data)
+        view_to_py = getattr(view, "to_py", None)
+        if callable(view_to_py):
+            return bytes(view_to_py()).decode("utf-8", errors="replace")
+        return bytes(view).decode("utf-8", errors="replace")
+    except Exception:
+        try:
+            return bytes(data).decode("utf-8", errors="replace")
+        except Exception:
+            return str(data)
+
+
 async def object_text(obj):
     body = getattr(obj, "body", None)
     if hasattr(body, "text"):
         return await body.text()
     data = await obj.arrayBuffer()
-    if isinstance(data, str):
-        return data
-    if isinstance(data, bytes):
-        return data.decode("utf-8", errors="replace")
-    try:
-        return bytes(data).decode("utf-8", errors="replace")
-    except Exception:
-        return str(data)
+    return decode_buffer(data)
 
 
 class Default(WorkerEntrypoint):

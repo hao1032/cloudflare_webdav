@@ -56,6 +56,22 @@ class FakeObject:
         return self.body
 
 
+class FakeArrayBuffer:
+    def __init__(self, body):
+        self.body = body
+
+    def to_py(self):
+        return self.body
+
+    def __str__(self):
+        return "[object ArrayBuffer]"
+
+
+class FakeArrayBufferObject(FakeObject):
+    async def arrayBuffer(self):
+        return FakeArrayBuffer(self.body)
+
+
 class FakeListing:
     def __init__(self, objects):
         self.objects = objects
@@ -186,6 +202,15 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<article", response.body)
         self.assertIn("<h1>Title</h1>", response.body)
         self.assertIn("?raw=1", response.body)
+
+    async def test_markdown_preview_decodes_array_buffer(self):
+        self.bucket.objects["readme.md"] = FakeArrayBufferObject("readme.md", b"# Title")
+        request = FakeRequest("GET", "/readme.md", headers={"Accept": "text/html"})
+
+        response = await self.worker.get(self.bucket, request, "/readme.md")
+
+        self.assertIn("<h1>Title</h1>", response.body)
+        self.assertNotIn("[object ArrayBuffer]", response.body)
 
     async def test_browser_get_image_returns_preview(self):
         await self.bucket.put("image.png", b"png", httpMetadata={"contentType": "image/png"})
