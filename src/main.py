@@ -26,14 +26,11 @@ try:
     )
     from .responses import (
         dav_response,
-        directory_row,
-        format_modified,
-        format_size,
-        html_page,
         html_response,
         response,
         text_response,
     )
+    from .web import directory_page, directory_row, format_modified, format_size, preview_kind, preview_page
 except ImportError:
     from dav import build_prop_response, etag_from_object, http_date, multistatus
     from paths import (
@@ -56,14 +53,11 @@ except ImportError:
     )
     from responses import (
         dav_response,
-        directory_row,
-        format_modified,
-        format_size,
-        html_page,
         html_response,
         response,
         text_response,
     )
+    from web import directory_page, directory_row, format_modified, format_size, preview_kind, preview_page
 
 
 def requested_depth(request):
@@ -110,6 +104,35 @@ def request_method(request):
     return request.method.upper()
 
 
+def accepts_html(request):
+    accept = request.headers.get("accept") or ""
+    return "text/html" in accept or "application/xhtml+xml" in accept
+
+
+def raw_requested(request):
+    return "raw=1" in (urlsplit(request.url).query or "")
+
+
+def object_content_type(obj):
+    metadata = getattr(obj, "httpMetadata", None)
+    return getattr(metadata, "contentType", "") if metadata else ""
+
+
+async def object_text(obj):
+    body = getattr(obj, "body", None)
+    if hasattr(body, "text"):
+        return await body.text()
+    data = await obj.arrayBuffer()
+    if isinstance(data, str):
+        return data
+    if isinstance(data, bytes):
+        return data.decode("utf-8", errors="replace")
+    try:
+        return bytes(data).decode("utf-8", errors="replace")
+    except Exception:
+        return str(data)
+
+
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         try:
@@ -133,7 +156,7 @@ class Default(WorkerEntrypoint):
         if method == "PROPFIND":
             return await self.propfind(bucket, request, path)
         if method in ("GET", "HEAD"):
-            return await self.get(bucket, path, head_only=method == "HEAD")
+            return await self.get(bucket, request, path, head_only=method == "HEAD")
         if method == "PUT":
             return await self.put(bucket, request, path)
         if method == "DELETE":
@@ -199,7 +222,7 @@ class Default(WorkerEntrypoint):
 
         return dav_response(multistatus(responses))
 
-    async def get(self, bucket, path, head_only=False):
+    async def get(self, bucket, request, path, head_only=False):
         obj = await bucket.get(object_key(path))
         if not r2_exists(obj):
             if await collection_exists(bucket, path):
@@ -218,6 +241,30 @@ class Default(WorkerEntrypoint):
         if head_only:
             headers["content-length"] = str(getattr(obj, "size", 0))
             return response("", status=200, headers=headers)
+        if accepts_html(request) and not raw_requested(request):
+            kind = preview_kind(path, headers.get("content-type", ""))
+            if kind == "image":
+                return html_response(
+                    preview_page(
+                        path,
+                        kind,
+                        "",
+                        href_for(path) + "?raw=1",
+                        size=format_size(getattr(obj, "size", 0)),
+                        modified=format_modified(getattr(obj, "uploaded", None)),
+                    )
+                )
+            if kind:
+                return html_response(
+                    preview_page(
+                        path,
+                        kind,
+                        await object_text(obj),
+                        href_for(path) + "?raw=1",
+                        size=format_size(getattr(obj, "size", 0)),
+                        modified=format_modified(getattr(obj, "uploaded", None)),
+                    )
+                )
         return Response(obj.body, status=200, headers=headers)
 
     async def directory_listing(self, bucket, path):
@@ -245,7 +292,7 @@ class Default(WorkerEntrypoint):
             )
 
         title = f"Index of {path if path.endswith('/') else path + '/'}"
-        return html_response(html_page(title, rows))
+        return html_response(directory_page(title, rows))
 
     async def put(self, bucket, request, path):
         if path == "/" or path.endswith("/"):

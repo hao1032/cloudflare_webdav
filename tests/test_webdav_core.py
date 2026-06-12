@@ -176,6 +176,36 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 412)
         self.assertEqual(self.bucket.objects["dst.txt"].body, b"dst")
 
+    async def test_browser_get_markdown_returns_preview(self):
+        await self.bucket.put("readme.md", b"# Title\n\n```py\nprint('hi')\n```", httpMetadata={"contentType": "text/markdown"})
+        request = FakeRequest("GET", "/readme.md", headers={"Accept": "text/html"})
+
+        response = await self.worker.get(self.bucket, request, "/readme.md")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn("<article", response.body)
+        self.assertIn("<h1>Title</h1>", response.body)
+        self.assertIn("?raw=1", response.body)
+
+    async def test_browser_get_image_returns_preview(self):
+        await self.bucket.put("image.png", b"png", httpMetadata={"contentType": "image/png"})
+        request = FakeRequest("GET", "/image.png", headers={"Accept": "text/html"})
+
+        response = await self.worker.get(self.bucket, request, "/image.png")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn('<img class="image-preview"', response.body)
+        self.assertIn("/image.png?raw=1", response.body)
+
+    async def test_raw_query_returns_original_body(self):
+        await self.bucket.put("readme.md", b"# Title", httpMetadata={"contentType": "text/markdown"})
+        request = FakeRequest("GET", "/readme.md?raw=1", headers={"Accept": "text/html"})
+
+        response = await self.worker.get(self.bucket, request, "/readme.md")
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body, b"# Title")
+
     async def test_debug_errors_returns_traceback(self):
         self.worker.env.DEBUG_ERRORS = "1"
         delattr(self.worker.env, "WEBDAV_BUCKET")
