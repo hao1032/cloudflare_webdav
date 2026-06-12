@@ -112,6 +112,16 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 201)
         self.assertIn("docs/child/.dir", self.bucket.objects)
 
+    async def test_dir_marker_is_listed_as_directory(self):
+        await self.bucket.put("empty/.dir", b"")
+        await self.bucket.put("nested/child/.dir", b"")
+
+        directories, files = await storage.list_children(self.bucket, "")
+
+        self.assertIn(("empty", "empty/"), directories)
+        self.assertIn(("nested", "nested/"), directories)
+        self.assertEqual(files, [])
+
     async def test_copy_file_uses_r2_object_and_preserves_content_type(self):
         await self.bucket.put("src.txt", b"hello", httpMetadata={"contentType": "text/plain"})
         request = FakeRequest(

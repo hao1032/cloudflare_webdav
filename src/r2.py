@@ -105,10 +105,14 @@ async def list_children(bucket, prefix):
         listing = await bucket.list(**options)
 
         for item in getattr(listing, "objects", []):
-            if is_hidden_marker(item.key):
-                continue
             name = item.key[len(prefix) :]
             if not name:
+                continue
+            if is_hidden_marker(item.key):
+                marker_parent = name.rsplit("/", 1)[0]
+                if marker_parent:
+                    first, separator, _rest = marker_parent.partition("/")
+                    directories.setdefault(first, prefix + first + "/")
                 continue
             first, separator, _rest = name.partition("/")
             if separator:
