@@ -126,4 +126,3 @@ export WEBDAV_TEST_INSECURE=1
 
 - R2 是对象存储，不是原生文件系统；目录复制、移动和删除会逐个对象处理。
 - 公开部署时建议设置 `WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD`。
-- `LOCK`/`UNLOCK` 用于兼容常见 WebDAV 客户端，目前不维护真实锁状态，不能作为强并发写入保护。

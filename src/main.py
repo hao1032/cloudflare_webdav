@@ -1,249 +1,66 @@
 from base64 import b64decode
-from email.utils import formatdate
-from html import escape
 from traceback import format_exc
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import urlsplit
 
 from workers import Response, WorkerEntrypoint
 
-
-DAV_NS = "DAV:"
-
-
-def normalize_path(raw_path):
-    decoded = unquote(raw_path or "/")
-    parts = []
-    for part in decoded.split("/"):
-        if not part or part == ".":
-            continue
-        if part == "..":
-            if parts:
-                parts.pop()
-            continue
-        parts.append(part)
-    return "/" + "/".join(parts)
-
-
-def object_key(path):
-    path = normalize_path(path)
-    if path == "/":
-        return ""
-    return path.strip("/")
-
-
-def dir_marker_key(path):
-    key = object_key(path)
-    if not key:
-        return ""
-    return key.rstrip("/") + "/.dir"
-
-
-def href_for(path):
-    normalized = normalize_path(path)
-    if normalized != "/" and path.endswith("/"):
-        normalized += "/"
-    return quote(normalized, safe="/")
-
-
-def parent_path(path):
-    normalized = normalize_path(path)
-    if normalized == "/":
-        return "/"
-    parent = normalized.rsplit("/", 1)[0]
-    return parent or "/"
-
-
-def is_hidden_marker(key):
-    return key.endswith("/.dir")
-
-
-def http_date(timestamp):
-    if not timestamp:
-        return formatdate(usegmt=True)
-    if hasattr(timestamp, "timestamp"):
-        return formatdate(timestamp.timestamp(), usegmt=True)
-    return formatdate(usegmt=True)
-
-
-def etag_from_object(obj):
-    http_etag = getattr(obj, "httpEtag", None)
-    etag = getattr(obj, "etag", None)
-    return http_etag or (f'"{etag}"' if etag else None)
-
-
-def r2_exists(obj):
-    return obj is not None and getattr(obj, "key", None) is not None
-
-
-async def r2_copy_payload(obj):
-    data = await obj.arrayBuffer()
-    try:
-        from js import Uint8Array
-
-        return Uint8Array.new(data)
-    except ImportError:
-        return data
-
-
-def r2_http_metadata(obj):
-    metadata = getattr(obj, "httpMetadata", None)
-    if not metadata:
-        return None
-    content_type = getattr(metadata, "contentType", None)
-    if not content_type:
-        return None
-    return {"contentType": content_type}
-
-
-def response(body="", status=200, headers=None):
-    return Response(body, status=status, headers=headers or {})
-
-
-def text_response(body, status=200, extra_headers=None):
-    headers = {"content-type": "text/plain; charset=utf-8"}
-    if extra_headers:
-        headers.update(extra_headers)
-    return response(body, status=status, headers=headers)
-
-
-def dav_response(xml_body, status=207):
-    return response(
-        xml_body,
-        status=status,
-        headers={"content-type": 'application/xml; charset="utf-8"'},
+try:
+    from .dav import build_prop_response, etag_from_object, http_date, multistatus
+    from .paths import (
+        destination_path,
+        dir_marker_key,
+        href_for,
+        normalize_path,
+        object_key,
+        parent_path,
     )
-
-
-def html_response(html_body, status=200, extra_headers=None):
-    headers = {"content-type": "text/html; charset=utf-8"}
-    if extra_headers:
-        headers.update(extra_headers)
-    return response(html_body, status=status, headers=headers)
-
-
-def format_size(size):
-    value = float(size or 0)
-    for unit in ("B", "KiB", "MiB", "GiB"):
-        if value < 1024 or unit == "GiB":
-            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-        value /= 1024
-    return f"{value:.1f} GiB"
-
-
-def html_page(title, rows):
-    body_rows = "\n".join(rows) or '<tr><td colspan="3" class="empty">Empty directory</td></tr>'
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{escape(title)}</title>
-  <style>
-    :root {{ color-scheme: light dark; }}
-    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.45; }}
-    main {{ max-width: 960px; margin: 0 auto; }}
-    h1 {{ font-size: 1.5rem; margin: 0 0 1rem; word-break: break-word; }}
-    table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); padding: .65rem .5rem; text-align: left; }}
-    th.size, td.size {{ text-align: right; white-space: nowrap; }}
-    td.modified {{ white-space: nowrap; opacity: .75; }}
-    a {{ color: inherit; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    .empty {{ opacity: .7; text-align: center; }}
-  </style>
-</head>
-<body>
-  <main>
-    <h1>{escape(title)}</h1>
-    <table>
-      <thead><tr><th>Name</th><th class="size">Size</th><th>Modified</th></tr></thead>
-      <tbody>
-        {body_rows}
-      </tbody>
-    </table>
-  </main>
-</body>
-</html>"""
-
-
-def directory_row(name, href, size="", modified="", is_dir=False):
-    label = f"{name}/" if is_dir else name
-    icon = "[DIR] " if is_dir else ""
-    return (
-        "<tr>"
-        f'<td><a href="{escape(href, quote=True)}">{escape(icon + label)}</a></td>'
-        f'<td class="size">{escape(size)}</td>'
-        f'<td class="modified">{escape(modified)}</td>'
-        "</tr>"
+    from .r2 import (
+        collection_exists,
+        copy_object,
+        copy_prefix,
+        delete_prefix,
+        is_collection,
+        list_children,
+        object_exists,
+        r2_exists,
     )
-
-
-def xml_escape(value):
-    return escape(str(value or ""), quote=True)
-
-
-def build_prop_response(href, is_dir, size=0, modified=None, etag=None):
-    display_name = "" if href == "/" else unquote(href.rstrip("/").rsplit("/", 1)[-1])
-    resource_type = "<D:resourcetype><D:collection /></D:resourcetype>" if is_dir else "<D:resourcetype />"
-    content_props = ""
-    if is_dir:
-        content_props = ""
-    else:
-        content_props = f"<D:getcontentlength>{int(size or 0)}</D:getcontentlength>"
-        if etag:
-            content_props += f"<D:getetag>{xml_escape(etag)}</D:getetag>"
-
-    return f"""<D:response>
-  <D:href>{xml_escape(href)}</D:href>
-  <D:propstat>
-    <D:prop>
-      <D:displayname>{xml_escape(display_name)}</D:displayname>
-      <D:creationdate>{xml_escape(http_date(modified))}</D:creationdate>
-      <D:getlastmodified>{xml_escape(http_date(modified))}</D:getlastmodified>
-      {resource_type}
-      {content_props}
-    </D:prop>
-    <D:status>HTTP/1.1 200 OK</D:status>
-  </D:propstat>
-</D:response>"""
-
-
-def multistatus(responses):
-    return (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        f'<D:multistatus xmlns:D="{DAV_NS}">'
-        + "".join(responses)
-        + "</D:multistatus>"
+    from .responses import (
+        dav_response,
+        directory_row,
+        format_size,
+        html_page,
+        html_response,
+        response,
+        text_response,
     )
-
-
-def lock_token_for(path):
-    return f"opaquelocktoken:{quote(object_key(path) or 'root', safe='')}"
-
-
-def lock_response(path):
-    token = lock_token_for(path)
-    body = f"""<?xml version="1.0" encoding="utf-8"?>
-<D:prop xmlns:D="DAV:">
-  <D:lockdiscovery>
-    <D:activelock>
-      <D:locktype><D:write /></D:locktype>
-      <D:lockscope><D:exclusive /></D:lockscope>
-      <D:depth>infinity</D:depth>
-      <D:owner />
-      <D:timeout>Second-3600</D:timeout>
-      <D:locktoken><D:href>{xml_escape(token)}</D:href></D:locktoken>
-      <D:lockroot><D:href>{xml_escape(href_for(path))}</D:href></D:lockroot>
-    </D:activelock>
-  </D:lockdiscovery>
-</D:prop>"""
-    return response(
-        body,
-        status=200,
-        headers={
-            "content-type": 'application/xml; charset="utf-8"',
-            "lock-token": f"<{token}>",
-        },
+except ImportError:
+    from dav import build_prop_response, etag_from_object, http_date, multistatus
+    from paths import (
+        destination_path,
+        dir_marker_key,
+        href_for,
+        normalize_path,
+        object_key,
+        parent_path,
+    )
+    from r2 import (
+        collection_exists,
+        copy_object,
+        copy_prefix,
+        delete_prefix,
+        is_collection,
+        list_children,
+        object_exists,
+        r2_exists,
+    )
+    from responses import (
+        dav_response,
+        directory_row,
+        format_size,
+        html_page,
+        html_response,
+        response,
+        text_response,
     )
 
 
@@ -283,111 +100,12 @@ def unauthorized():
     )
 
 
-def destination_path(request):
-    destination = request.headers.get("destination")
-    if not destination:
-        return None
-    return normalize_path(urlsplit(destination).path)
-
-
 def request_method(request):
     js_object = getattr(request, "js_object", None)
     method = getattr(js_object, "method", None)
     if method:
         return str(method).upper()
     return request.method.upper()
-
-
-async def object_exists(bucket, path):
-    key = object_key(path)
-    if not key:
-        return True
-    if r2_exists(await bucket.head(key)):
-        return True
-    if r2_exists(await bucket.head(dir_marker_key(path))):
-        return True
-    listing = await bucket.list(prefix=key.rstrip("/") + "/", limit=1)
-    return bool(getattr(listing, "objects", []))
-
-
-async def is_collection(bucket, path):
-    if normalize_path(path) == "/":
-        return True
-    key = object_key(path)
-    if r2_exists(await bucket.head(dir_marker_key(path))):
-        return True
-    listing = await bucket.list(prefix=key.rstrip("/") + "/", limit=1)
-    return bool(getattr(listing, "objects", []))
-
-
-collection_exists = is_collection
-
-
-async def delete_prefix(bucket, prefix):
-    cursor = None
-    while True:
-        options = {"prefix": prefix, "limit": 1000}
-        if cursor:
-            options["cursor"] = cursor
-        listing = await bucket.list(**options)
-        keys = [item.key for item in getattr(listing, "objects", [])]
-        if keys:
-            await bucket.delete(keys)
-        cursor = getattr(listing, "cursor", None)
-        if not getattr(listing, "truncated", False):
-            break
-
-
-async def copy_prefix(bucket, source_prefix, destination_prefix):
-    cursor = None
-    while True:
-        options = {"prefix": source_prefix, "limit": 1000}
-        if cursor:
-            options["cursor"] = cursor
-        listing = await bucket.list(**options)
-        for item in getattr(listing, "objects", []):
-            source_key = item.key
-            target_key = destination_prefix + source_key[len(source_prefix) :]
-            obj = await bucket.get(source_key)
-            if r2_exists(obj):
-                options = {}
-                metadata = r2_http_metadata(obj)
-                if metadata:
-                    options["httpMetadata"] = metadata
-                await bucket.put(target_key, await r2_copy_payload(obj), **options)
-        cursor = getattr(listing, "cursor", None)
-        if not getattr(listing, "truncated", False):
-            break
-
-
-async def list_children(bucket, prefix):
-    directories = {}
-    files = []
-    cursor = None
-
-    while True:
-        options = {"prefix": prefix, "limit": 1000}
-        if cursor:
-            options["cursor"] = cursor
-        listing = await bucket.list(**options)
-
-        for item in getattr(listing, "objects", []):
-            if is_hidden_marker(item.key):
-                continue
-            name = item.key[len(prefix) :]
-            if not name:
-                continue
-            first, separator, _rest = name.partition("/")
-            if separator:
-                directories.setdefault(first, prefix + first + "/")
-            else:
-                files.append(item)
-
-        cursor = getattr(listing, "cursor", None)
-        if not getattr(listing, "truncated", False):
-            break
-
-    return sorted(directories.items()), sorted(files, key=lambda item: item.key)
 
 
 class Default(WorkerEntrypoint):
@@ -424,10 +142,6 @@ class Default(WorkerEntrypoint):
             return await self.move_or_copy(bucket, request, path, move=True)
         if method == "COPY":
             return await self.move_or_copy(bucket, request, path, move=False)
-        if method == "LOCK":
-            return lock_response(path)
-        if method == "UNLOCK":
-            return response("", status=204)
 
         return text_response("Method not allowed", status=405)
 
@@ -436,8 +150,8 @@ class Default(WorkerEntrypoint):
             "",
             status=204,
             headers={
-                "allow": "OPTIONS, PROPFIND, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, LOCK, UNLOCK",
-                "dav": "1, 2",
+                "allow": "OPTIONS, PROPFIND, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY",
+                "dav": "1",
                 "ms-author-via": "DAV",
             },
         )
@@ -598,14 +312,8 @@ class Default(WorkerEntrypoint):
             if move:
                 await delete_prefix(bucket, source_prefix)
         else:
-            obj = await bucket.get(source_key)
-            if not r2_exists(obj):
+            if not await copy_object(bucket, source_key, destination_key):
                 return text_response("Not found", status=404)
-            options = {}
-            metadata = r2_http_metadata(obj)
-            if metadata:
-                options["httpMetadata"] = metadata
-            await bucket.put(destination_key, await r2_copy_payload(obj), **options)
             if move:
                 await bucket.delete(source_key)
 

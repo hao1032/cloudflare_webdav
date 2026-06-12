@@ -64,12 +64,6 @@ class LiveWebDAVTests(unittest.TestCase):
         self.assertEqual(downloaded, body)
         self.request("HEAD", hello)
 
-        status, headers, lock_body = self.request("LOCK", hello)
-        self.assertEqual(status, 200)
-        self.assertIn("lock-token", {key.lower(): value for key, value in headers.items()})
-        self.assertIn(b"lockdiscovery", lock_body)
-        self.request("UNLOCK", hello, headers={"Lock-Token": headers.get("Lock-Token", "")})
-
         self.request(
             "COPY",
             hello,

@@ -15,10 +15,13 @@ class FakeResponse:
 workers = types.ModuleType("workers")
 workers.Response = FakeResponse
 workers.WorkerEntrypoint = object
-sys.modules.setdefault("workers", workers)
+sys.modules["workers"] = workers
 
 main = importlib.import_module("src.main")
+storage = importlib.import_module("src.r2")
+responses = importlib.import_module("src.responses")
 main.Response = FakeResponse
+responses.Response = FakeResponse
 
 
 class Headers(dict):
@@ -95,7 +98,7 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_implicit_directory_is_collection(self):
         await self.bucket.put("docs/file.txt", b"hello")
 
-        self.assertTrue(await main.is_collection(self.bucket, "/docs"))
+        self.assertTrue(await storage.is_collection(self.bucket, "/docs"))
         response = await self.worker.delete(self.bucket, "/docs")
 
         self.assertEqual(response.status, 204)
