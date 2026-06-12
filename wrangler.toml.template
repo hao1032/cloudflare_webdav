@@ -8,6 +8,13 @@ binding = "WEBDAV_BUCKET"
 bucket_name = "{{R2_BUCKET_NAME}}"
 preview_bucket_name = "{{R2_PREVIEW_BUCKET_NAME}}"
 
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 [vars]
 # Leave username empty and do not set a password secret to disable Basic Auth.
 WEBDAV_USERNAME = "{{WEBDAV_USERNAME}}"
