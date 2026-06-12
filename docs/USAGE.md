@@ -72,12 +72,24 @@ npm run deploy
 | `R2_BUCKET_NAME` | 必填 | `webdav` | 正式环境使用的 R2 Bucket |
 | `R2_PREVIEW_BUCKET_NAME` | 可选 | `webdav-preview` | 预览环境使用的 R2 Bucket |
 | `WEBDAV_USERNAME` | 可选 | `admin` | WebDAV 登录用户名 |
-| `WEBDAV_PASSWORD` | 可选 | `change-me` | WebDAV 登录密码 |
+| `WEBDAV_PASSWORD` | 可选 | `change-me` | WebDAV 登录密码；正式部署请配置为 Wrangler secret |
 | `DEBUG_ERRORS` | 可选 | `1` | 临时诊断运行时报错；排查完成后请清空 |
 
 如果没有创建预览 bucket，可以不设置 `R2_PREVIEW_BUCKET_NAME`。
 
 如果不设置 `WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD`，服务将不需要登录即可访问。公开部署时建议设置用户名和密码。
+
+为了避免密码写入生成的 `wrangler.toml`，正式部署请用 secret 设置密码：
+
+```bash
+npx wrangler secret put WEBDAV_PASSWORD
+```
+
+本地开发时可以在 `.dev.vars` 中写入：
+
+```text
+WEBDAV_PASSWORD=change-me
+```
 
 保存环境变量后，重新触发一次部署。
 
@@ -184,6 +196,7 @@ https://cloudflare-r2-webdav.your-account.workers.dev
 - 公开部署时建议设置 `WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD`。
 - 如果客户端提示认证失败，先检查 Worker 环境变量里的用户名和密码。
 - 如果客户端提示找不到存储，检查 R2 bucket 名称和 `WEBDAV_BUCKET` binding。
+- `LOCK`/`UNLOCK` 只提供客户端兼容响应，不维护真实锁状态，不能作为强并发写入保护。
 
 ## 11. 验证部署
 

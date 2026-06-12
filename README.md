@@ -34,13 +34,13 @@ export WORKER_NAME=webdav
 export R2_BUCKET_NAME=webdav
 export R2_PREVIEW_BUCKET_NAME=webdav-preview
 export WEBDAV_USERNAME=admin
-export WEBDAV_PASSWORD=change-me
 npm run render:wrangler
+npx wrangler secret put WEBDAV_PASSWORD
 ```
 
 `R2_BUCKET_NAME` 是必填项。`R2_PREVIEW_BUCKET_NAME` 可选；不设置时会和 `R2_BUCKET_NAME` 使用同一个 bucket。
 
-`WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD` 可选；两个都为空时不启用认证。
+`WEBDAV_USERNAME` 可选；`WEBDAV_PASSWORD` 使用 Wrangler secret 配置，避免写入 `wrangler.toml`。两者都为空时不启用认证。本地开发可在 `.dev.vars` 中设置 `WEBDAV_PASSWORD=change-me`。
 
 ## 本地开发
 
@@ -91,3 +91,5 @@ export WEBDAV_TEST_INSECURE=1
 ## 说明
 
 R2 是对象存储，不是原生文件系统，所以 `MOVE` 和 `COPY` 对目录会逐个对象复制。大目录操作可能比较慢，也可能受到 Worker 执行时间限制。这个项目适合作为个人 WebDAV、备份入口或小规模文件同步服务的基础版本。
+
+`LOCK`/`UNLOCK` 用于兼容常见 WebDAV 客户端，目前不维护真实锁状态；不要把它作为强并发写入保护。

@@ -1,6 +1,7 @@
 from base64 import b64decode
 from email.utils import formatdate
 from html import escape
+from traceback import format_exc
 from urllib.parse import quote, unquote, urlsplit
 
 from workers import Response, WorkerEntrypoint
@@ -82,6 +83,16 @@ async def r2_copy_payload(obj):
         return Uint8Array.new(data)
     except ImportError:
         return data
+
+
+def r2_http_metadata(obj):
+    metadata = getattr(obj, "httpMetadata", None)
+    if not metadata:
+        return None
+    content_type = getattr(metadata, "contentType", None)
+    if not content_type:
+        return None
+    return {"contentType": content_type}
 
 
 def response(body="", status=200, headers=None):
@@ -302,17 +313,14 @@ async def object_exists(bucket, path):
 async def is_collection(bucket, path):
     if normalize_path(path) == "/":
         return True
-    return r2_exists(await bucket.head(dir_marker_key(path)))
-
-
-async def collection_exists(bucket, path):
-    if await is_collection(bucket, path):
-        return True
     key = object_key(path)
-    if not key:
+    if r2_exists(await bucket.head(dir_marker_key(path))):
         return True
     listing = await bucket.list(prefix=key.rstrip("/") + "/", limit=1)
     return bool(getattr(listing, "objects", []))
+
+
+collection_exists = is_collection
 
 
 async def delete_prefix(bucket, prefix):
@@ -342,7 +350,11 @@ async def copy_prefix(bucket, source_prefix, destination_prefix):
             target_key = destination_prefix + source_key[len(source_prefix) :]
             obj = await bucket.get(source_key)
             if r2_exists(obj):
-                await bucket.put(target_key, await r2_copy_payload(obj))
+                options = {}
+                metadata = r2_http_metadata(obj)
+                if metadata:
+                    options["httpMetadata"] = metadata
+                await bucket.put(target_key, await r2_copy_payload(obj), **options)
         cursor = getattr(listing, "cursor", None)
         if not getattr(listing, "truncated", False):
             break
@@ -378,29 +390,14 @@ async def list_children(bucket, prefix):
     return sorted(directories.items()), sorted(files, key=lambda item: item.key)
 
 
-async def fetch_source_payload(request):
-    try:
-        from js import Blob
-        from js import fetch
-        from pyodide.ffi import to_js
-    except ImportError:
-        return None
-
-    headers = {}
-    authorization = request.headers.get("authorization")
-    if authorization:
-        headers["authorization"] = authorization
-    fetched = await fetch(request.url, to_js({"headers": headers}))
-    if not getattr(fetched, "ok", False):
-        return None
-    return Blob.new(to_js([await fetched.arrayBuffer()]))
-
-
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         try:
             return await self.handle(request)
         except Exception:
+            env = getattr(self, "env", None)
+            if getattr(env, "DEBUG_ERRORS", ""):
+                return text_response(format_exc(), status=500)
             return text_response("Internal server error", status=500)
 
     async def handle(self, request):
@@ -450,12 +447,6 @@ class Default(WorkerEntrypoint):
         key = object_key(path)
         obj = await bucket.head(key) if key else None
         collection = await is_collection(bucket, path)
-
-        if not key:
-            collection = True
-        elif not r2_exists(obj) and not collection:
-            listing = await bucket.list(prefix=key.rstrip("/") + "/", limit=1)
-            collection = bool(getattr(listing, "objects", []))
 
         if not r2_exists(obj) and not collection:
             return text_response("Not found", status=404)
@@ -576,7 +567,7 @@ class Default(WorkerEntrypoint):
         if await object_exists(bucket, path):
             return text_response("Already exists", status=405)
         parent = parent_path(path)
-        if parent != "/" and not await is_collection(bucket, parent):
+        if parent != "/" and not await collection_exists(bucket, parent):
             return text_response("Parent collection does not exist", status=409)
         await bucket.put(dir_marker_key(path), "")
         return response("", status=201)
@@ -607,10 +598,14 @@ class Default(WorkerEntrypoint):
             if move:
                 await delete_prefix(bucket, source_prefix)
         else:
-            payload = await fetch_source_payload(request)
-            if payload is None:
+            obj = await bucket.get(source_key)
+            if not r2_exists(obj):
                 return text_response("Not found", status=404)
-            await bucket.put(destination_key, payload)
+            options = {}
+            metadata = r2_http_metadata(obj)
+            if metadata:
+                options["httpMetadata"] = metadata
+            await bucket.put(destination_key, await r2_copy_payload(obj), **options)
             if move:
                 await bucket.delete(source_key)
 

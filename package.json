@@ -2,15 +2,15 @@
   "name": "cloudflare-r2-webdav",
   "private": true,
   "scripts": {
-    "build": "python3 scripts/render_wrangler_config.py",
-    "render:wrangler": "python3 scripts/render_wrangler_config.py",
-    "predev": "python3 scripts/render_wrangler_config.py",
+    "build": "python scripts/render_wrangler_config.py",
+    "render:wrangler": "python scripts/render_wrangler_config.py",
+    "predev": "python scripts/render_wrangler_config.py",
     "dev": "wrangler dev",
-    "predeploy": "python3 scripts/render_wrangler_config.py",
+    "predeploy": "python scripts/render_wrangler_config.py",
     "deploy": "wrangler deploy",
-    "test": "python3 -m unittest discover -s tests",
-    "test:live": "python3 -m unittest tests.test_webdav_live",
-    "check": "python3 -m py_compile src/main.py"
+    "test": "python -B -m unittest discover -s tests",
+    "test:live": "python -B -m unittest tests.test_webdav_live",
+    "check": "python -B -c \"import ast, pathlib; ast.parse(pathlib.Path('src/main.py').read_text(encoding='utf-8'))\""
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
