@@ -110,7 +110,7 @@ async def list_children(bucket, prefix):
                 continue
             if is_hidden_marker(item.key):
                 marker_parent = name.rsplit("/", 1)[0]
-                if marker_parent:
+                if marker_parent and marker_parent != ".dir":
                     first, separator, _rest = marker_parent.partition("/")
                     directories.setdefault(first, prefix + first + "/")
                 continue

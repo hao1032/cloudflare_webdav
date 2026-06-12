@@ -122,6 +122,14 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("nested", "nested/"), directories)
         self.assertEqual(files, [])
 
+    async def test_current_dir_marker_is_hidden_inside_directory(self):
+        await self.bucket.put("empty/.dir", b"")
+
+        directories, files = await storage.list_children(self.bucket, "empty/")
+
+        self.assertEqual(directories, [])
+        self.assertEqual(files, [])
+
     async def test_copy_file_uses_r2_object_and_preserves_content_type(self):
         await self.bucket.put("src.txt", b"hello", httpMetadata={"contentType": "text/plain"})
         request = FakeRequest(
