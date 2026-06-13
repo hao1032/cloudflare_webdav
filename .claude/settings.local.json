@@ -9,7 +9,8 @@
       "Bash(git push *)",
       "Bash(git commit -m 'Only count requests with auth header toward failure lockout *)",
       "Bash(git commit -m 'Lower '\\\\''Returning 401'\\\\'' log level from log to info *)",
-      "Bash(git commit -m 'Fix: use null body for 204/304/1xx responses *)"
+      "Bash(git commit -m 'Fix: use null body for 204/304/1xx responses *)",
+      "Bash(git commit -m 'Remove redundant '\\\\''Returning 401'\\\\'' log line *)"
     ]
   }
 }
