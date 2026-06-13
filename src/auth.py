@@ -2,6 +2,25 @@ from base64 import b64decode
 from json import dumps, loads
 from time import time
 
+try:
+    _ = console  # noqa: F821 — Cloudflare Workers global
+except NameError:
+    # Local/test compatibility shim
+    import logging as _logging
+    import sys as _sys
+
+    class _Console:
+        def log(self, msg, *args):
+            print(f"[LOG] {msg}", *args, file=_sys.stderr)
+
+        def warn(self, msg, *args):
+            print(f"[WARN] {msg}", *args, file=_sys.stderr)
+
+        def error(self, msg, *args):
+            print(f"[ERROR] {msg}", *args, file=_sys.stderr)
+
+    console = _Console()
+
 
 AUTH_STATE_KEY = ".webdav-auth.json"
 DEFAULT_AUTH_STATE = {
@@ -68,7 +87,8 @@ async def read_auth_state(bucket):
             data = await obj.arrayBuffer()
             text = data.decode("utf-8", errors="replace") if isinstance(data, bytes) else str(data)
         return normalize_auth_state(loads(text))
-    except Exception:
+    except Exception as exc:
+        console.warn(f"[auth] Failed to read auth state from R2: {exc}")
         return dict(DEFAULT_AUTH_STATE)
 
 
@@ -79,7 +99,8 @@ async def write_auth_state(bucket, state):
             dumps(normalize_auth_state(state), ensure_ascii=False, indent=2),
             httpMetadata={"contentType": "application/json"},
         )
-    except Exception:
+    except Exception as exc:
+        console.error(f"[auth] Failed to write auth state to R2: {exc}")
         return False
     return True
 
@@ -102,8 +123,12 @@ async def record_auth_failure(bucket, now=None):
     else:
         state["count"] = int(state.get("count", 0)) + 1
 
+    console.log(f"[auth] Authentication failure ({state['count']}/{state['failure_limit']})")
+
     if int(state["count"]) >= int(state["failure_limit"]):
         state["blocked_until"] = now + int(state["lock_seconds"])
+        locked_secs = int(state["lock_seconds"])
+        console.warn(f"[auth] Lockout triggered: blocked for {locked_secs}s until timestamp {state['blocked_until']}")
 
     await write_auth_state(bucket, state)
     return state
@@ -112,6 +137,7 @@ async def record_auth_failure(bucket, now=None):
 async def clear_auth_failures(bucket):
     state = await read_auth_state(bucket)
     if int(state.get("count", 0)) or int(state.get("first_failed_at", 0)) or int(state.get("blocked_until", 0)):
+        console.log(f"[auth] Authentication succeeded, clearing {state.get('count', 0)} previous failure(s)")
         state["count"] = 0
         state["first_failed_at"] = 0
         state["blocked_until"] = 0

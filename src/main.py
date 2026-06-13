@@ -2,6 +2,23 @@ from traceback import format_exc
 from time import time
 from urllib.parse import urlsplit
 
+try:
+    _ = console  # noqa: F821 — Cloudflare Workers global
+except NameError:
+    import sys as _sys
+
+    class _Console:
+        def log(self, msg, *args):
+            print(f"[LOG] {msg}", *args, file=_sys.stderr)
+
+        def warn(self, msg, *args):
+            print(f"[WARN] {msg}", *args, file=_sys.stderr)
+
+        def error(self, msg, *args):
+            print(f"[ERROR] {msg}", *args, file=_sys.stderr)
+
+    console = _Console()
+
 from workers import Response, WorkerEntrypoint
 
 try:
@@ -182,13 +199,18 @@ class Default(WorkerEntrypoint):
         state = await read_auth_state(bucket)
         now = int(time())
         if is_locked(state, now):
+            remaining = max(0, int(state.get("blocked_until", 0)) - now)
+            console.warn(f"[auth] Request blocked: account locked for {remaining}s more")
             return auth_locked_response(state)
         if credentials_match(request, self.env):
             await clear_auth_failures(bucket)
             return None
         state = await record_auth_failure(bucket)
         if is_locked(state, int(time())):
+            remaining = max(0, int(state.get("blocked_until", 0)) - int(time()))
+            console.warn(f"[auth] Request blocked: account locked for {remaining}s more")
             return auth_locked_response(state)
+        console.log("[auth] Returning 401 unauthorized")
         return unauthorized()
 
     def options(self):
