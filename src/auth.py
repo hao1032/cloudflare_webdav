@@ -13,6 +13,9 @@ except NameError:
         def log(self, msg, *args):
             print(f"[LOG] {msg}", *args, file=_sys.stderr)
 
+        def info(self, msg, *args):
+            print(f"[INFO] {msg}", *args, file=_sys.stderr)
+
         def warn(self, msg, *args):
             print(f"[WARN] {msg}", *args, file=_sys.stderr)
 

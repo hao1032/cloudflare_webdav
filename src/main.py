@@ -11,6 +11,9 @@ except NameError:
         def log(self, msg, *args):
             print(f"[LOG] {msg}", *args, file=_sys.stderr)
 
+        def info(self, msg, *args):
+            print(f"[INFO] {msg}", *args, file=_sys.stderr)
+
         def warn(self, msg, *args):
             print(f"[WARN] {msg}", *args, file=_sys.stderr)
 
@@ -211,7 +214,7 @@ class Default(WorkerEntrypoint):
                 remaining = max(0, int(state.get("blocked_until", 0)) - int(time()))
                 console.warn(f"[auth] Request blocked: account locked for {remaining}s more")
                 return auth_locked_response(state)
-        console.log("[auth] Returning 401 unauthorized")
+        console.info("[auth] Returning 401 unauthorized")
         return unauthorized()
 
     def options(self):
