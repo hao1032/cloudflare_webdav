@@ -2,6 +2,10 @@ from workers import Response
 
 
 def response(body="", status=200, headers=None):
+    # Status codes 204 (No Content), 304 (Not Modified), and 1xx
+    # MUST have a null body per the Fetch API spec.
+    if body == "" and (status in (204, 304) or 100 <= status < 200):
+        body = None
     return Response(body, status=status, headers=headers or {})
 
 
