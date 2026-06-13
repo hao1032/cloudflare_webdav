@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(python3 -c \"import src.auth; print\\('auth.py imports OK'\\)\")",
+      "Bash(python3 *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Add auth event logging for Cloudflare Workers observability *)",
+      "Bash(git push *)",
+      "Bash(git commit -m 'Only count requests with auth header toward failure lockout *)"
+    ]
+  }
+}

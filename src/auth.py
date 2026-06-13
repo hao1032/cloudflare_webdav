@@ -52,6 +52,11 @@ def decode_basic_auth(request):
     return username, password
 
 
+def has_auth_attempt(request):
+    """Return True if the request carries an Authorization header that looks like a Basic auth attempt."""
+    return (request.headers.get("authorization") or "").lower().startswith("basic ")
+
+
 def credentials_match(request, env):
     username, password = decode_basic_auth(request)
     return username == getattr(env, "WEBDAV_USERNAME", "") and password == getattr(env, "WEBDAV_PASSWORD", "")

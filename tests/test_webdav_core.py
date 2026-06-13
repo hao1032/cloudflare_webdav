@@ -269,6 +269,30 @@ class WebDAVCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status, 429)
 
+    async def test_requests_without_auth_header_do_not_count_as_failures(self):
+        self.worker.env.WEBDAV_USERNAME = "admin"
+        self.worker.env.WEBDAV_PASSWORD = "secret"
+
+        # Send requests with NO Authorization header — should all return 401
+        # but NOT increment the failure counter
+        for _ in range(5):
+            response = await self.worker.authorize(self.bucket, FakeRequest("GET", "/"))
+            self.assertEqual(response.status, 401)
+
+        # No auth state should have been written at all (or count is 0)
+        obj = self.bucket.objects.get(auth.AUTH_STATE_KEY)
+        if obj is not None:
+            state = json.loads(obj.body.decode())
+            self.assertEqual(state["count"], 0)
+
+    async def test_has_auth_attempt_returns_false_without_header(self):
+        request = FakeRequest("GET", "/")
+        self.assertFalse(auth.has_auth_attempt(request))
+
+    async def test_has_auth_attempt_returns_true_with_basic_header(self):
+        request = self.auth_request(password="wrong")
+        self.assertTrue(auth.has_auth_attempt(request))
+
     async def test_successful_auth_clears_failure_count(self):
         self.worker.env.WEBDAV_USERNAME = "admin"
         self.worker.env.WEBDAV_PASSWORD = "secret"

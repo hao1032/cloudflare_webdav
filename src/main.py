@@ -22,7 +22,7 @@ except NameError:
 from workers import Response, WorkerEntrypoint
 
 try:
-    from .auth import auth_required, clear_auth_failures, credentials_match, is_locked, read_auth_state, record_auth_failure
+    from .auth import auth_required, clear_auth_failures, credentials_match, has_auth_attempt, is_locked, read_auth_state, record_auth_failure
     from .dav import build_prop_response, etag_from_object, http_date, multistatus
     from .paths import (
         destination_path,
@@ -50,7 +50,7 @@ try:
     )
     from .web import directory_page, directory_row, format_modified, format_size, preview_kind, preview_page
 except ImportError:
-    from auth import auth_required, clear_auth_failures, credentials_match, is_locked, read_auth_state, record_auth_failure
+    from auth import auth_required, clear_auth_failures, credentials_match, has_auth_attempt, is_locked, read_auth_state, record_auth_failure
     from dav import build_prop_response, etag_from_object, http_date, multistatus
     from paths import (
         destination_path,
@@ -205,11 +205,12 @@ class Default(WorkerEntrypoint):
         if credentials_match(request, self.env):
             await clear_auth_failures(bucket)
             return None
-        state = await record_auth_failure(bucket)
-        if is_locked(state, int(time())):
-            remaining = max(0, int(state.get("blocked_until", 0)) - int(time()))
-            console.warn(f"[auth] Request blocked: account locked for {remaining}s more")
-            return auth_locked_response(state)
+        if has_auth_attempt(request):
+            state = await record_auth_failure(bucket)
+            if is_locked(state, int(time())):
+                remaining = max(0, int(state.get("blocked_until", 0)) - int(time()))
+                console.warn(f"[auth] Request blocked: account locked for {remaining}s more")
+                return auth_locked_response(state)
         console.log("[auth] Returning 401 unauthorized")
         return unauthorized()
 
